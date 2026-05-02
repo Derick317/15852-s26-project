@@ -1,12 +1,12 @@
 #include <iostream>
 #include <string>
 
-#include "parlaylib/include/parlay/primitives.h"
-#include "parlaylib/include/parlay/sequence.h"
-#include "parlaylib/include/parlay/internal/get_time.h"
+#include "parlay/primitives.h"
+#include "parlay/sequence.h"
+#include "parlay/internal/get_time.h"
 
 #include "maximal_leafy.h"
-#include "parlaylib/examples/helper/graph_utils.h"
+
 
 template<typename Range, typename BinaryOp>
 auto my_reduce(const Range& A, BinaryOp&& binop) {

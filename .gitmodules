@@ -1,0 +1,6 @@
+[submodule "external_lib/doctest"]
+	path = external_lib/doctest
+	url = https://github.com/doctest/doctest.git
+[submodule "external_lib/parlaylib"]
+	path = external_lib/parlaylib
+	url = https://github.com/cmuparlay/parlaylib.git

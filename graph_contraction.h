@@ -4,9 +4,9 @@
 #include "parlay/sequence.h"
 #include "helper.h"
 
-auto distance(
-  const parlay::sequence<ssize_t>& prevs
-) -> parlay::sequence<ssize_t>;
+auto graph_distance(
+  const ssize_t_seq& prevs
+) -> ssize_t_seq;
 
 
 #endif

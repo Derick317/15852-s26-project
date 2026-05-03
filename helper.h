@@ -4,6 +4,7 @@
 #include "parlay/sequence.h"
 
 using ssize_t = std::make_signed_t<std::size_t>;
+using ssize_t_seq = parlay::sequence<ssize_t>;
 constexpr ssize_t INVALID_INDEX = -1; 
 
 template <typename T>
@@ -41,7 +42,9 @@ void print_nested_seq(const parlay::sequence<T>& nested_seq, std::string name=""
   if (!name.empty()) {
     std::cout << name << ":\n";
   }
+  size_t i = 0;
   for (const auto& x: nested_seq) {
+    std::cout << '[' << i++ << "]: \t";
     print_seq(x);
   }
 }

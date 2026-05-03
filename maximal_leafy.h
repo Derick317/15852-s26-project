@@ -4,7 +4,7 @@
 #include "parlay/sequence.h"
 #include "helper.h"
 
-using nested_seq = parlay::sequence<parlay::sequence<ssize_t>>;
+using nested_seq = parlay::sequence<ssize_t_seq>;
 using graph = nested_seq;
 
 /**
@@ -17,30 +17,40 @@ using graph = nested_seq;
  * @param right all inner sequences should be non-empty
  */
 auto leafy_match(const nested_seq& left, const nested_seq& right)
-  -> std::pair<parlay::sequence<size_t>, parlay::sequence<ssize_t>>;
+  -> std::pair<parlay::sequence<size_t>, ssize_t_seq>;
 
-void filter_left_right(
-  nested_seq& left, parlay::sequence<ssize_t>& left_v,
-  nested_seq& right, parlay::sequence<ssize_t>& right_v,
-  const parlay::sequence<ssize_t>& left_remain
+void filter_bipartite(
+  nested_seq& x, ssize_t_seq& x_v,
+  nested_seq& y, ssize_t_seq& y_v,
+  const ssize_t_seq& y_remain
 );
 
 auto create_left_right(
   const graph& G, const parlay::sequence<bool>& prevented, 
-  const parlay::sequence<ssize_t>& left_v,
-  parlay::sequence<ssize_t>& as_right_indices
-) -> std::tuple<nested_seq, nested_seq, parlay::sequence<ssize_t>>;
+  const ssize_t_seq& left_v,
+  ssize_t_seq& as_right_indices
+) -> std::tuple<nested_seq, nested_seq, ssize_t_seq>;
 
 /**
  * Expand the graph from vertices `starts`. Each vertex in `starts` should
  * expand to 0 or at least 2 unvisited vertices. If a vertex in `starts`
  * is expanded by another, we can discard its expansion.
  */
-void maximal_expand(
+auto maximal_expand(
   const graph& G, 
-  parlay::sequence<bool>& visited, 
-  parlay::sequence<ssize_t>& starts,
-  parlay::sequence<ssize_t>& as_right_indices
-);
+  const parlay::sequence<bool>& visited, 
+  const ssize_t_seq& starts,
+  ssize_t_seq& as_right_indices
+) -> std::pair<ssize_t_seq, ssize_t_seq>;
+
+auto level_expand(
+  const graph& G, 
+  const parlay::sequence<bool>& visited,
+  const ssize_t_seq& leaves,
+  const ssize_t_seq& pendings,
+  const ssize_t_seq& pending_parents,
+  ssize_t_seq& as_right_indices,
+  ssize_t_seq& as_start_indices
+) -> std::tuple<ssize_t_seq, ssize_t_seq, ssize_t_seq, ssize_t_seq>;
 
 #endif

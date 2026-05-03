@@ -1,4 +1,5 @@
 #include "maximal_leafy.h"
+#include "graph_contraction.h"
 
 /**
  * Randomly match vertices on the left and vertices on the right
@@ -8,9 +9,12 @@
  *
  * @param left all inner sequences should be non-empty
  * @param right all inner sequences should be non-empty
+ *
+ * @note if an inner sequence in `left` has fewer than 2 elements, it is
+ * possible that no elements are matched.
  */
 auto leafy_match(const nested_seq& left, const nested_seq& right)
-  -> std::pair<parlay::sequence<size_t>, parlay::sequence<ssize_t>> {
+  -> std::pair<parlay::sequence<size_t>, ssize_t_seq> {
   auto priorities = parlay::random_permutation(left.size());
   auto right_neighbor_priorities = parlay::tabulate<parlay::sequence<size_t>>(
     right.size(), [&right, &priorities] (long i) {
@@ -70,46 +74,51 @@ auto leafy_match(const nested_seq& left, const nested_seq& right)
 }
 
 /**
- * @param left_remain a one-hot vector
+ * @param x_remain a one-hot vector
  */
-void filter_left_right(
-  nested_seq& left, parlay::sequence<ssize_t>& left_v,
-  nested_seq& right, parlay::sequence<ssize_t>& right_v,
-  const parlay::sequence<ssize_t>& right_remain
+void filter_bipartite(
+  nested_seq& x, ssize_t_seq& x_v,
+  nested_seq& y, ssize_t_seq& y_v,
+  const ssize_t_seq& y_remain
 ) {
-  parlay::parallel_for(0, left_v.size(), [&left, &right_remain] (size_t i) {
-    left[i] = parlay::filter(left[i], [&right_remain] (ssize_t j) {
-      return right_remain[j];
+  parlay::parallel_for(0, x_v.size(), [&x, &y_remain] (size_t i) {
+    x[i] = parlay::filter(x[i], [&y_remain] (ssize_t j) {
+      return y_remain[j];
     });
   });
-  const auto left_remain = parlay::map(left, [] (const auto& s) {
+  const auto x_remain = parlay::map(x, [] (const auto& s) {
     return ssize_t(s.size() > 0); 
   });
 
-  const auto [right_new_indices, right_num] = parlay::scan(right_remain);
-  const auto [left_new_indices, left_num] = parlay::scan(left_remain);
-  filter_by_onehot(right, right_remain);
-  filter_by_onehot(left, left_remain);
-  filter_by_onehot(right_v, right_remain);
-  filter_by_onehot(left_v, left_remain);
+  const auto [y_new_indices, y_num] = parlay::scan(y_remain);
+  const auto [x_new_indices, x_num] = parlay::scan(x_remain);
+  filter_by_onehot(y, y_remain);
+  filter_by_onehot(x, x_remain);
+  filter_by_onehot(y_v, y_remain);
+  filter_by_onehot(x_v, x_remain);
   
-  parlay::parallel_for(0, right.size(), [&right, &left_new_indices] (size_t i) {
-    right[i] = parlay::map(right[i], [i, &right, &left_new_indices] (ssize_t r) {
-      return left_new_indices[r];
+  parlay::parallel_for(0, y.size(), [&y, &x_new_indices] (size_t i) {
+    y[i] = parlay::map(y[i], [i, &y, &x_new_indices] (ssize_t r) {
+      return x_new_indices[r];
     });
   });
-  parlay::parallel_for(0, left.size(), [&left, &right_new_indices] (size_t i) {
-    left[i] = parlay::map(left[i], [i, &left, &right_new_indices] (ssize_t l) {
-      return right_new_indices[l];
+  parlay::parallel_for(0, x.size(), [&x, &y_new_indices] (size_t i) {
+    x[i] = parlay::map(x[i], [i, &x, &y_new_indices] (ssize_t l) {
+      return y_new_indices[l];
     });
   });
 }
 
+/**
+ * @post `as_right_indices` should be consistent with `right_v`, such that
+ * `as_right_indices[right_v[i]] == i`, and if x is not in `right_v`,
+ * `as_right_indices[x]` is unchanged.
+ */
 auto create_left_right(
   const graph& G, const parlay::sequence<bool>& prevented, 
-  const parlay::sequence<ssize_t>& left_v,
-  parlay::sequence<ssize_t>& as_right_indices
-) -> std::tuple<nested_seq, nested_seq, parlay::sequence<ssize_t>> {
+  const ssize_t_seq& left_v,
+  ssize_t_seq& as_right_indices
+) -> std::tuple<nested_seq, nested_seq, ssize_t_seq> {
   auto left = parlay::map(left_v, [&prevented, &G] (ssize_t v) {
     return parlay::filter(G[v], [&prevented] (ssize_t r) { return !prevented[r]; });
   });
@@ -143,19 +152,233 @@ auto create_left_right(
  * Expand the graph from vertices `starts`. Each vertex in `starts` should
  * expand to 0 or at least 2 unvisited vertices. If a vertex in `starts`
  * is expanded by another, we can discard its expansion.
+ *
+ * @return right_v vertex IDs of all vertices in the next level
+ * @return right_selection vertex IDs of selections of vertices in the next
+ * level
+ *
+ * @post `as_right_indices` should be consistent with `right_v`, such that
+ * `as_right_indices[right_v[i]] == i`, and if x is not in `right_v`,
+ * `as_right_indices[x]` is unchanged.
+ * @post For an unvisited vertex of index i, it selects `right_selection[i]`,
+ * and there must be another unvisited vertex also selects `right_selection[i]`.
  */
-void maximal_expand(
+auto maximal_expand(
   const graph& G, 
-  parlay::sequence<bool>& visited, 
-  parlay::sequence<ssize_t>& starts,
-  parlay::sequence<ssize_t>& as_right_indices
-) {
+  const parlay::sequence<bool>& visited, 
+  const ssize_t_seq& starts,
+  ssize_t_seq& as_right_indices
+) -> std::pair<ssize_t_seq, ssize_t_seq> {
   auto [left, right, right_v] = create_left_right(G, visited, starts, as_right_indices);
-  auto left_remain = parlay::map(left, [] (const auto& s) { 
-    return ssize_t(s.size() > 1);
+  auto right_v_init = right_v;
+  auto left_v = starts;
+  auto right_selection = ssize_t_seq(right_v.size(), INVALID_INDEX);
+  while (true) {
+    auto left_remain = parlay::map(left, [] (const auto& s) { 
+      return ssize_t(s.size() > 1);
+    });
+    filter_bipartite(right, right_v, left, left_v, left_remain);
+    if (left.empty()) {
+      break;
+    }
+    auto [_, current_right_selection] = leafy_match(left, right);
+    parlay::parallel_for(
+      0, right_v.size(),
+      [&current_right_selection, &right_selection, &left_v, &right_v, &as_right_indices] 
+      (size_t i) {
+        if (auto idx_in_left = current_right_selection[i]; idx_in_left != INVALID_INDEX) {
+          right_selection[as_right_indices[right_v[i]]] = left_v[idx_in_left];
+        }
+      }
+    );
+
+    auto right_remain = parlay::map(current_right_selection, [] (ssize_t x) {
+      return ssize_t(x == INVALID_INDEX);
+    });
+    filter_bipartite(left, left_v, right, right_v, right_remain);
+  }
+
+  return {right_v_init, right_selection};
+}
+
+/**
+ * @pre `leaves` and `pending_parents` are all visited;
+ * @pre `pendings` are not visited
+ * @pre `as_right_indices` are all `INVALID_INDEX`'s
+ * @post `as_right_indices` are all `INVALID_INDEX`'s
+ */
+auto level_expand(
+  const graph& G, 
+  const parlay::sequence<bool>& visited,
+  const ssize_t_seq& leaves,
+  const ssize_t_seq& pendings,
+  const ssize_t_seq& pending_parents,
+  ssize_t_seq& as_right_indices,
+  ssize_t_seq& as_start_indices
+) -> std::tuple<ssize_t_seq, ssize_t_seq, ssize_t_seq, ssize_t_seq> {
+  auto starts = ssize_t_seq(leaves.size() + pendings.size());
+  parlay::parallel_for(
+    0, leaves.size(),
+    [&leaves, &starts, &as_start_indices] (size_t i) {
+      starts[i] = leaves[i];
+      as_start_indices[leaves[i]] = i;
+    }
+  );
+  parlay::parallel_for(
+    0, pendings.size(),
+    [offset = leaves.size(), &pendings, &starts, &as_start_indices] (size_t i) {
+      starts[i + offset] = pendings[i];
+      as_start_indices[pendings[i]] = i + offset;
+    }
+  );
+
+  auto [right_v, right_selection] = maximal_expand(G, visited, starts, as_right_indices);
+  auto left_selector = parlay::map(
+    starts, 
+    [&G, &right_selection, &as_right_indices] (auto l) {
+      return parlay::filter(G[l], [&as_right_indices, &right_selection, l] (auto r) {
+        return as_right_indices[r] != INVALID_INDEX 
+          && l == right_selection[as_right_indices[r]];
+      });
+    }
+  );
+  auto start_selection = parlay::tabulate(
+    starts.size(), 
+    [&starts, &as_right_indices, &as_start_indices, &right_selection] (ssize_t i) {
+      auto v = starts[i];
+      if (
+        auto right_index = as_right_indices[v]; 
+        right_index == INVALID_INDEX || right_selection[right_index] == INVALID_INDEX
+      ) {
+        return i;
+      } else {
+        return as_start_indices[right_selection[right_index]];
+      }
+    }
+  );
+  auto distances = graph_distance(start_selection);
+  parlay::parallel_for(
+    0, starts.size(),
+    [
+      &distances, &starts, &right_selection, &left_selector, &pending_parents,
+      &as_right_indices, &as_start_indices, leaf_num = leaves.size()
+    ] (size_t i) {
+      if (distances[i] % 2 == 1) {
+        parlay::parallel_for(
+          0, left_selector[i].size(),
+          [&left_selector, &right_selection, &as_right_indices, i, &as_start_indices] 
+          (size_t j) {
+            auto r_v = left_selector[i][j];
+            if (as_start_indices[r_v] == INVALID_INDEX) {
+              auto r_idx = as_right_indices[r_v];
+              right_selection[r_idx] = INVALID_INDEX;
+            }
+          }
+        );
+      } else if (i >= leaf_num) {
+        right_selection[as_right_indices[starts[i]]] = pending_parents[i - leaf_num];
+      }
+    }
+  );
+
+  /**
+   * if 2x is the last node in a cycle of odd length, `odd_cycle_last[2x]` is
+   * the first node in the cycle; otherwise, it is INVALID_INDEX.
+   *
+   * (2x) <-- 0 <-
+   */
+  auto odd_cycle_last = ssize_t_seq(starts.size(), INVALID_INDEX);
+  parlay::parallel_for(
+    0, starts.size(), 
+    [&odd_cycle_last, &distances, &start_selection] (size_t i) {
+      auto select_dist = distances[start_selection[i]];
+      if (
+        distances[i] == 0 && select_dist > 0 && select_dist % 2 == 0) {
+        odd_cycle_last[start_selection[i]] = i;
+      }
+    }
+  );
+
+  /**
+   * Note a node should be selected by at least 2 nodes to be considered here.
+   *
+   * - 2x is selected by at least 2 nodes other than 0, just remove 0's selection of 2x
+   * - 2x is selected by only 1 other node
+   * - - this node is not a starting node, then just ignore 2x
+   * - - this node is another starting node, which distance is (2x+1)
+   * - - - (2x+1) is selected by another non-starting node, let 2x select (2x+1)
+   * - - - (2x+1) is selected by only starting node, then just ignore 2x
+   *
+   * (2x+2) -x-> (2x+1) ---> 2x <-x- 0 <--- 1 <--- ...
+   *               ^          \
+   *               |           x-> ...
+   *           non-start
+   * becomes
+   * (2x+2) -x-> (2x+1) <--- 2x <-x- 0 <--- 1 <--- ...
+   *               ^          \
+   *               |           x-> ...
+   *           non-start
+   */
+  parlay::parallel_for(
+    0, starts.size(), 
+    [
+      &odd_cycle_last, &as_start_indices, &right_selection, &as_right_indices, 
+      &left_selector, &starts, &pending_parents
+    ] (size_t i) {
+      auto zero_index = odd_cycle_last[i];
+      if (zero_index != INVALID_INDEX) {
+        if (left_selector[i].size() < 3) {
+          auto another_selector = left_selector[i][0];
+          if (another_selector == starts[zero_index]) {
+            another_selector = left_selector[i][1];
+          } 
+          auto another_index = as_start_indices[another_selector];
+          auto right_index = as_right_indices[starts[i]];
+          if (another_index == INVALID_INDEX) {
+            right_selection[right_index] = INVALID_INDEX;
+          } else {
+            auto iter =  parlay::find_if(
+              left_selector[another_index],
+              [&as_start_indices] (auto r_v) {
+                return as_start_indices[r_v] == INVALID_INDEX;
+              }
+            );
+            if (iter == left_selector[another_index].end()) {
+              right_selection[right_index] = INVALID_INDEX;
+            } else {
+              right_selection[right_index] = another_selector;
+              auto another_right_index = as_right_indices[another_selector];
+              right_selection[another_right_index] = pending_parents[another_index];
+            }
+          }
+        }
+      }
+    }
+  );
+
+  // Find the pending list of the next level
+  auto unselect_neighbor = parlay::map(
+    leaves,
+    [&G, &as_right_indices, &right_selection] (ssize_t v) {
+      auto n = parlay::filter(G[v], [&as_right_indices, &right_selection] (ssize_t r) {
+        return right_selection[as_right_indices[r]] == INVALID_INDEX;
+      });
+      return n.empty() ? INVALID_INDEX : n[0];
+    }
+  );
+  auto is_parent = parlay::map(
+    unselect_neighbor,
+    [] (auto v) { return v != INVALID_INDEX; }
+  );
+  auto parents = leaves;
+  filter_by_onehot(parents, is_parent);
+  filter_by_onehot(unselect_neighbor, is_parent);
+
+  parlay::parallel_for(0, right_v.size(), [&right_v, &as_right_indices] (auto i) {
+    as_right_indices[right_v[i]] = INVALID_INDEX;
   });
-
-
-
-  return;
+  parlay::parallel_for(0, starts.size(), [&starts, &as_start_indices] (auto i) {
+    as_start_indices[starts[i]] = INVALID_INDEX;
+  });
+  return {right_v, right_selection, unselect_neighbor, parents};
 }

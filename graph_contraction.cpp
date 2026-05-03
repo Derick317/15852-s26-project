@@ -9,10 +9,10 @@ static auto random_bool(size_t i) -> bool {
 }
 
 auto distance_helper(
-  const parlay::sequence<ssize_t>& prevs,
-  const parlay::sequence<ssize_t>& nums,
+  const ssize_t_seq& prevs,
+  const ssize_t_seq& nums,
   size_t seed
-) -> parlay::sequence<ssize_t> {
+) -> ssize_t_seq {
   if (prevs.empty()) {
     return {};
   }
@@ -60,7 +60,7 @@ auto distance_helper(
   filter_by_onehot(old_indices, remains);
 
   auto sums = distance_helper(new_prevs, new_nums, seed + 1);
-  auto result = parlay::sequence<ssize_t>(prevs.size());
+  auto result = ssize_t_seq(prevs.size());
   parlay::parallel_for(
     0, old_indices.size(),
     [&old_indices, &nums, &sums, &result, &jumped, &prevs] (size_t i) {
@@ -91,8 +91,8 @@ auto distance_helper(
 }
 
 
-auto distance(const parlay::sequence<ssize_t>& prevs)
- -> parlay::sequence<ssize_t> {
-  auto nums = parlay::sequence<ssize_t>(prevs.size(), 1);
+auto graph_distance(const ssize_t_seq& prevs)
+ -> ssize_t_seq {
+  auto nums = ssize_t_seq(prevs.size(), 1);
   return distance_helper(prevs, nums, 0);
 }

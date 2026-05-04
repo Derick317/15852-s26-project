@@ -4,47 +4,23 @@
 #include "parlay/primitives.h"
 #include "parlay/sequence.h"
 #include "parlay/internal/get_time.h"
-
 #include "maximal_leafy.h"
 
 
-template<typename Range, typename BinaryOp>
-auto my_reduce(const Range& A, BinaryOp&& binop) {
-  long n = A.size();
-  using T = typename Range::value_type;
-  long block_size = 100;
-  if (n == 0) return binop.identity;
-  if (n <= block_size) {
-    T v = A[0];
-    for (long i=1; i < n; i++)
-      v = binop(v, A[i]);
-    return v;
-  }
-
-  T L, R;
-  parlay::par_do([&] {L = my_reduce(parlay::make_slice(A).cut(0,n/2), binop);},
-                 [&] {R = my_reduce(parlay::make_slice(A).cut(n/2,n), binop);});
-  return binop(L,R);
-}
-
-void test_leafy_match() {
-  nested_seq left{{0}, {1}, {2}, {0, 1, 2}};
-  nested_seq right{{0, 3}, {1, 3}, {2, 3}};
-  auto [left_selected_count, right_selection] = leafy_match(left, right);
-  print_seq(right_selection, "result");
-  std::cout << std::endl;
-}
-
-
 int main(int argc, char* argv[]) {
-  test_leafy_match();
-  auto seq = parlay::tabulate<long>(100000000, [&] (long i) {
-      return i * i % 1000000007; });
+  auto seq = parlay::tabulate<long>(1000000000, [&] (long i) {
+      return i; });
+  auto seq10 = seq.tail(10);
+  for (size_t i = 0; i < seq10.size(); ++i) {
+    std::cout << seq10[i] << ' ';
+  }
   parlay::internal::timer t("Time");
-  for (int i=0; i < 3; i++) {
-    auto max = reduce_maximum(seq);
-    std::cout << max << ": " << seq[max] << std::endl;
-    t.next("reduce");
+  size_t target = 1000;
+  while (target < seq.size()) {
+    auto iter = parlay::find_if(seq, [target] (auto x) { return x == target; });
+    std::cout << "target: " << target << std::endl;
+    t.next("find_if");
+    target *= 10;
   }
   return 0;
 }

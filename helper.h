@@ -63,5 +63,4 @@ void filter_by_onehot(parlay::sequence<T>& seq, const parlay::sequence<NUM>& one
   seq = parlay::map(old_indices, [&seq] (ssize_t i) { return seq[i]; });
 }
 
-
 #endif

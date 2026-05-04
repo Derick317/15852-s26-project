@@ -205,7 +205,13 @@ auto maximal_expand(
  * @pre `leaves` and `pending_parents` are all visited;
  * @pre `pendings` are not visited
  * @pre `as_right_indices` are all `INVALID_INDEX`'s
- * @post `as_right_indices` are all `INVALID_INDEX`'s
+ * @pre `as_start_indices` are all `INVALID_INDEX`'s
+ * @return right_v
+ * @return right_selection
+ * @return next_pendings
+ * @return next_pending_parents
+ * @post `as_right_indices` are consistent with `right_v`
+ * @post `as_start_indices` are all `INVALID_INDEX`;
  */
 auto level_expand(
   const graph& G, 
@@ -275,7 +281,7 @@ auto level_expand(
             }
           }
         );
-      } else if (i >= leaf_num) {
+      } else if (i >= leaf_num && as_right_indices[starts[i]] != INVALID_INDEX) {
         right_selection[as_right_indices[starts[i]]] = pending_parents[i - leaf_num];
       }
     }
@@ -357,13 +363,27 @@ auto level_expand(
   );
 
   // Find the pending list of the next level
+  auto become_next_pending = parlay::sequence<std::atomic_flag>(right_v.size());
+  parlay::parallel_for(
+    0, right_v.size(),
+    [&become_next_pending] (auto i) {
+      become_next_pending[i].clear();
+    }
+  );
   auto unselect_neighbor = parlay::map(
     leaves,
-    [&G, &as_right_indices, &right_selection] (ssize_t v) {
+    [&G, &as_right_indices, &right_selection, &become_next_pending] (ssize_t v) {
       auto n = parlay::filter(G[v], [&as_right_indices, &right_selection] (ssize_t r) {
         return right_selection[as_right_indices[r]] == INVALID_INDEX;
       });
-      return n.empty() ? INVALID_INDEX : n[0];
+      if (n.empty()) {
+        return INVALID_INDEX;
+      }
+      auto neighbor = n[0];
+      if (become_next_pending[as_right_indices[neighbor]].test_and_set()) {
+        return INVALID_INDEX;
+      }
+      return neighbor;
     }
   );
   auto is_parent = parlay::map(
@@ -374,11 +394,95 @@ auto level_expand(
   filter_by_onehot(parents, is_parent);
   filter_by_onehot(unselect_neighbor, is_parent);
 
-  parlay::parallel_for(0, right_v.size(), [&right_v, &as_right_indices] (auto i) {
-    as_right_indices[right_v[i]] = INVALID_INDEX;
-  });
+  // Add pendings to right_v and right_selection
+  auto pendings_to_add = parlay::tabulate<bool>(
+    pendings.size(),
+    [&pendings, &as_right_indices, &left_selector, &leaves] (size_t i) {
+      return as_right_indices[pendings[i]] == INVALID_INDEX 
+        && left_selector[i + leaves.size()].size() >= 2;
+    }
+  );
+  auto right_v_from_pending = pendings;
+  auto right_selection_from_pending = pending_parents;
+  filter_by_onehot(right_v_from_pending, pendings_to_add);
+  filter_by_onehot(right_selection_from_pending, pendings_to_add);
+  right_v.append(right_v_from_pending.begin(), right_v_from_pending.end());
+  right_selection.append(
+    right_selection_from_pending.begin(),
+    right_selection_from_pending.end()
+  );
+
   parlay::parallel_for(0, starts.size(), [&starts, &as_start_indices] (auto i) {
     as_start_indices[starts[i]] = INVALID_INDEX;
   });
   return {right_v, right_selection, unselect_neighbor, parents};
+}
+
+
+auto leafy_forest(const graph& G) -> parlay::sequence<std::tuple<ssize_t, ssize_t>> {
+  ssize_t root = -1;
+  parlay::sequence<std::tuple<ssize_t, ssize_t>> forest_edges;
+  auto visited = parlay::sequence<bool>(G.size(), false);
+  ssize_t_seq as_right_indices(G.size(), INVALID_INDEX);
+  ssize_t_seq as_start_indices(G.size(), INVALID_INDEX);
+  while (true) {
+    auto new_root_iter = parlay::find_if(
+      G.tail(G.size() - (root + 1)),
+      [&visited] (const auto& vs) { 
+        return parlay::count_if(vs, [&visited] (auto v) { return !visited[v]; }) >= 3; 
+      }
+    );
+    root = new_root_iter - G.begin();
+    if (root >= G.size()) {
+      break;
+    }
+    visited[root] = true;
+    ssize_t_seq leaves{root};
+    ssize_t_seq pendings{};
+    ssize_t_seq pending_parents{};
+    while (!leaves.empty() || !pendings.empty()) {
+      std::cout << std::endl;
+      auto [right_v, right_selection, next_pendings, next_parents] = level_expand(
+        G, visited, leaves, pendings, pending_parents, 
+        as_right_indices, as_start_indices
+      );
+      auto new_edges = parlay::zip(right_v, right_selection);
+      new_edges = parlay::filter(
+        new_edges, 
+        [] (auto e) { return std::get<1>(e) != INVALID_INDEX; }
+      );
+      parlay::parallel_for(
+        0, new_edges.size(),
+        [&new_edges, &visited] (size_t i) {
+          visited[std::get<0>(new_edges[i])] = true;
+        }
+      );
+      forest_edges.append(new_edges.begin(), new_edges.end());
+
+      auto good_leaf = parlay::sequence<bool>(right_v.size(), true);
+      parlay::parallel_for(
+        0, right_v.size(),
+        [&good_leaf, &right_selection, &as_right_indices] (size_t i) {
+          if (right_selection[i] == INVALID_INDEX) {
+            good_leaf[i] = false;
+            return;
+          }
+          auto select_r_idx = as_right_indices[right_selection[i]];
+          if (select_r_idx != INVALID_INDEX) {
+            good_leaf[select_r_idx] = false;
+          }
+        }
+      );
+      leaves = right_v;
+      filter_by_onehot(leaves, good_leaf);
+      pendings = next_pendings;
+      pending_parents = next_parents;
+
+      parlay::parallel_for(0, right_v.size(), [&right_v, &as_right_indices] (auto i) {
+        as_right_indices[right_v[i]] = INVALID_INDEX;
+      });
+    }
+  }
+
+  return forest_edges;
 }

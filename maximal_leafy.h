@@ -53,4 +53,6 @@ auto level_expand(
   ssize_t_seq& as_start_indices
 ) -> std::tuple<ssize_t_seq, ssize_t_seq, ssize_t_seq, ssize_t_seq>;
 
+auto leafy_forest(const graph& G) -> parlay::sequence<std::tuple<ssize_t, ssize_t>>;
+
 #endif

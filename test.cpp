@@ -449,3 +449,57 @@ TEST_CASE("Level Expand Odd Cycle") {
     right_v, right_selection, next_pendings, next_parents
   );
 }
+
+TEST_CASE("Leafy Forest Star") {
+  ssize_t num_leaf = 10;
+  graph G(num_leaf + 1, {num_leaf});
+  G[num_leaf] = parlay::tabulate<ssize_t>(num_leaf, [] (auto i) { return i; });
+  auto forest = leafy_forest(G);
+  CHECK(forest.size() == num_leaf);
+  for (auto [v, v_select]: forest) {
+    CHECK(v_select == num_leaf);
+  }
+}
+
+TEST_CASE("Leafy Forest Simple") {
+  size_t num_v = 7;
+  std::vector<std::pair<ssize_t, ssize_t>> edges = {
+    {0, 2},
+    {1, 2},
+    {2, 3},
+    {2, 4},
+    {3, 5},
+    {4, 5},
+    {5, 6}
+  };
+  graph G(num_v);
+  for (auto [x, y]: edges) {
+    G[x].push_back(y);
+    G[y].push_back(x);
+  }
+  auto forest = leafy_forest(G);
+  CHECK(forest.size() == 4);
+}
+
+
+TEST_CASE("Leafy Forest Simple Many") {
+  size_t num_v = 7, copy = 4;
+  std::vector<std::pair<ssize_t, ssize_t>> edges = {
+    {0, 1},
+    {1, 2},
+    {1, 3},
+    {2, 4},
+    {3, 4},
+    {4, 5},
+    {4, 6}
+  };
+  graph G(num_v * copy);
+  for (auto [x, y]: edges) {
+    for (size_t i = 0; i < copy; ++i) {
+      G[x + i * num_v].push_back(y + i * num_v);
+      G[y + i * num_v].push_back(x + i * num_v);
+    }
+  }
+  auto forest = leafy_forest(G);
+  CHECK(forest.size() == 6 * copy);
+}

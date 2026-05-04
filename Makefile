@@ -34,7 +34,7 @@ install:
 	git submodule update --init --recursive
 
 run: $(EXEC)
-	./$(EXEC) $(ARG)
+	./$(EXEC) $(FILE) $(REPEAT)
 
 test: $(TEST_EXEC)
 	./$(TEST_EXEC)

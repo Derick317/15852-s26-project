@@ -8,11 +8,22 @@
 #include "maximal_leafy.h"
 
 int main(int argc, char* argv[]) {
-  auto usage = "Usage: BFS <filename>";
-  if (argc != 2) {
+  auto exec_file = std::string(argv[0]);
+  auto usage = "Usage: " + exec_file + " <filename> <repeat>";
+  if (argc != 3) {
     std::cerr << usage << std::endl;
     return 1;
   }
+
+  size_t repeat;
+  try { 
+    repeat = std::stol(argv[2]);
+  }
+  catch (...) {
+    repeat = 5;
+    std::cout << "Use default repeat: " << repeat << std::endl;
+  }
+
   std::ifstream file(argv[1]);
   if (!file) {
     std::cerr << "Error opening file\n";
@@ -41,7 +52,7 @@ int main(int argc, char* argv[]) {
 
   std::cout << "Parsed graph with " << G.size() << " nodes\n";
   parlay::internal::timer t("Time");
-  for (int i=0; i < 3; i++) {
+  for (size_t i = 0; i < repeat; i++) {
     auto result = leafy_forest(G);
     t.next("leafy forest");
   }

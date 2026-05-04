@@ -441,7 +441,6 @@ auto leafy_forest(const graph& G) -> parlay::sequence<std::tuple<ssize_t, ssize_
     ssize_t_seq pendings{};
     ssize_t_seq pending_parents{};
     while (!leaves.empty() || !pendings.empty()) {
-      std::cout << std::endl;
       auto [right_v, right_selection, next_pendings, next_parents] = level_expand(
         G, visited, leaves, pendings, pending_parents, 
         as_right_indices, as_start_indices

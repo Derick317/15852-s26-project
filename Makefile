@@ -7,13 +7,16 @@ endif
 CC=g++
 CFLAGS = -O3 -std=c++17 -pthread
 
-OBJ = maximal_leafy.o graph_contraction.o
+OBJ = maximal_leafy.o graph_contraction.o graph_loader.o
 TEST_OBJ = test.o
 EXEC = maximal_leafy
 TEST_EXEC = test_maximal_leafy
 
 PARLAYLIB = external_lib/parlaylib/include/
 DOCTEST = external_lib/doctest/doctest/
+
+graph_loader.o: graph_loader.cpp graph_loader.h helper.h
+	$(CC) $(CFLAGS) -I $(PARLAYLIB) -c graph_loader.cpp -o graph_loader.o
 
 graph_contraction.o: graph_contraction.cpp graph_contraction.h helper.h
 	$(CC) $(CFLAGS) -I $(PARLAYLIB) -c graph_contraction.cpp -o graph_contraction.o
@@ -34,7 +37,7 @@ install:
 	git submodule update --init --recursive
 
 run: $(EXEC)
-	./$(EXEC) $(FILE) $(REPEAT)
+	./$(EXEC) $(GRAPH) $(FILE) $(REPEAT)
 
 test: $(TEST_EXEC)
 	./$(TEST_EXEC)

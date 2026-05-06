@@ -5,6 +5,9 @@
 
 using ssize_t = std::make_signed_t<std::size_t>;
 using ssize_t_seq = parlay::sequence<ssize_t>;
+using nested_seq = parlay::sequence<ssize_t_seq>;
+using graph = nested_seq;
+
 constexpr ssize_t INVALID_INDEX = -1; 
 
 template <typename T>

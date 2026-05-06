@@ -1,11 +1,8 @@
-#ifndef MAXIMAL_LEAFY
-#define MAXIMAL_LEAFY
+#ifndef MAXIMAL_LEAFY_H_
+#define MAXIMAL_LEAFY_H_
 #include "parlay/primitives.h"
 #include "parlay/sequence.h"
 #include "helper.h"
-
-using nested_seq = parlay::sequence<ssize_t_seq>;
-using graph = nested_seq;
 
 /**
  * Randomly match vertices on the left and vertices on the right

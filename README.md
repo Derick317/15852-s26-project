@@ -14,11 +14,11 @@ make test
 
 Run on a graph from file `<filename>`:
 ```
-make run FILE=<filename> REPEAT=<num>
+make run GRAPH=<graph_name> FILE=<filename> REPEAT=<num>
 ```
 For example:
 ```
-make run FILE=graph_example.txt REPEAT=6
+make run GRAPH=orkut FILE=graph_example.txt REPEAT=6
 ```
 
 ## Speed Benchmark

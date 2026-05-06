@@ -1,59 +1,50 @@
 #include <iostream>
 #include <string>
-#include <fstream>
 
 #include "parlay/primitives.h"
 #include "parlay/sequence.h"
 #include "parlay/internal/get_time.h"
 #include "maximal_leafy.h"
+#include "graph_loader.h"
 
 int main(int argc, char* argv[]) {
   auto exec_file = std::string(argv[0]);
-  auto usage = "Usage: " + exec_file + " <filename> <repeat>";
-  if (argc != 3) {
+  auto usage = "Usage: " + exec_file + " <graph> <filename> <repeat>\n"
+    "\nSupported graphs:\n"
+    "\torkut    https://snap.stanford.edu/data/com-Orkut.html \n"
+    "\tus_road  https://www.diag.uniroma1.it/challenge9/download.shtml \n";
+  if (argc != 4) {
     std::cerr << usage << std::endl;
     return 1;
   }
 
   size_t repeat;
   try { 
-    repeat = std::stol(argv[2]);
+    repeat = std::stol(argv[3]);
   }
   catch (...) {
     repeat = 5;
     std::cout << "Use default repeat: " << repeat << std::endl;
   }
 
-  std::ifstream file(argv[1]);
-  if (!file) {
-    std::cerr << "Error opening file\n";
+  std::string graph_name(argv[1]), file_path(argv[2]);
+  std::optional<graph> G;
+  if (graph_name == "orkut") {
+    G = load_orkut(file_path);
+  } else if (graph_name == "us_road") {
+    G = load_us_road(file_path);
+  } else {
+    std::cerr << "Unsupported graph: " << graph_name << "\n" << usage << std::endl;
     return 1;
   }
 
-  graph G;
-  std::string line;
-
-  while (std::getline(file, line)) {
-    // Skip comments or empty lines
-    if (line.empty() || line[0] == '#') continue;
-
-    std::istringstream iss(line);
-    size_t u, v;
-
-    if (!(iss >> u >> v)) continue; // malformed line
-
-    if (std::max(u, v) >= G.size()) {
-      G.append(std::max(u, v) - G.size() + 1, {});
-    }
-    // Undirected graph → add both ways
-    G[u].push_back(v);
-    G[v].push_back(u);
+  if (!G.has_value()) {
+    return 1;
   }
-
-  std::cout << "Parsed graph with " << G.size() << " nodes\n";
+  
   parlay::internal::timer t("Time");
   for (size_t i = 0; i < repeat; i++) {
-    auto result = leafy_forest(G);
+    auto result = leafy_forest(G.value());
     t.next("leafy forest");
   }
 }

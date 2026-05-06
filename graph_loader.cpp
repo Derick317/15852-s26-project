@@ -47,7 +47,7 @@ std::optional<graph> load_us_road(const std::string& file_path) {
     // Skip comments or empty lines
     if (line.empty() || line[0] != 'a') continue;
 
-    std::istringstream iss(line);
+    std::istringstream iss(line.substr(1));
     size_t u, v, w;
 
     if (!(iss >> u >> v >> w)) continue; // malformed line

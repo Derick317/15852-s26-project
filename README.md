@@ -23,6 +23,10 @@ make run GRAPH=orkut FILE=graph_example.txt REPEAT=6
 
 ## Speed Benchmark
 
-I tested the code on a large graph, https://snap.stanford.edu/data/com-Orkut.html, which has 3072441 nodes and 117185083 edges, on Intel(R) Xeon(R) CPU E7-8867 v4 @ 2.40GHz, which has 72 cores and 144 hyper-threads. Here is the result:
+I tested the code on Intel(R) Xeon(R) CPU E7-8867 v4 @ 2.40GHz, which has 72 cores and 144 hyper-threads. For **orkut** https://snap.stanford.edu/data/com-Orkut.html, which has 3072441 nodes and 117185083 edges:
 
-![Speed up](benchmark.png)
+![Speed up](figures/benchmark_orkut.png)
+
+For **us road** https://www.diag.uniroma1.it/challenge9/download.shtml, which has 23947347 nodes and 23947347 edges:
+
+![Speed up](figures/benchmark_us_road.png)
